@@ -1,17 +1,17 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import Navbar from './components/Navbar.jsx';
-import HeroLanding from './components/HeroLanding.jsx';
+import SplashScreen from './components/SplashScreen.jsx';
+import RankPromptModal from './components/RankPromptModal.jsx';
 import AboutUsModal from './components/AboutUsModal.jsx';
 import HowItWorksModal from './components/HowItWorksModal.jsx';
 import ContactModal from './components/ContactModal.jsx';
-import OnboardingCard from './components/OnboardingCard.jsx';
 import OnboardingWizard from './components/OnboardingWizard.jsx';
 import StatsBar from './components/StatsBar.jsx';
 import ChoiceTable from './components/ChoiceTable.jsx';
 import LikelySidebar from './components/LikelySidebar.jsx';
 import LockChoicesModal from './components/LockChoicesModal.jsx';
 import RulesGuideModal from './components/RulesGuideModal.jsx';
-import { ALL_JOSAA_PROGRAMS } from './data/josaaCutoffs.js';
+import { ALL_JOSAA_PROGRAMS, INDIAN_STATES, RESERVATION_CATEGORIES } from './data/josaaCutoffs.js';
 import { generateSmartChoiceList, filterChoices } from './utils/choiceEngine.js';
 import { 
   Sparkles, 
@@ -19,35 +19,53 @@ import {
   Target, 
   ShieldCheck, 
   RotateCcw,
-  BookOpen
+  BookOpen,
+  Zap,
+  Sliders
 } from 'lucide-react';
 
+// Default candidate profile matching the user's reference mockup (CSAB, CRL 38291, OBC-NCL, Telangana)
 const INITIAL_PROFILE = {
-  counselingType: 'JOSAA',
-  jeeMainRank: '',
+  counselingType: 'CSAB',
+  jeeMainRank: 38291,
   isJeeAdvQualified: false,
   jeeAdvRank: '',
-  homeState: '',
-  category: 'OPEN',
+  homeState: 'Telangana',
+  category: 'OBC-NCL',
   genderPool: 'Gender-Neutral',
   preferredBranches: ['ALL']
 };
 
 export default function App() {
-  const [hasGenerated, setHasGenerated] = useState(() => {
-    return localStorage.getItem('josaa_has_generated_2026') === 'true';
-  });
+  // Splash screen: displays the Hero visual for 1 to 3 seconds (2.2s) on initial load and every browser refresh
+  const [showSplash, setShowSplash] = useState(true);
+
+  // Prompt modal: asks candidate for rank and preferences on initial load & every refresh once splash ends
+  const [isRankPromptOpen, setIsRankPromptOpen] = useState(true);
+
+  // Website is always open and ready with verified choices
+  const [hasGenerated, setHasGenerated] = useState(true);
 
   const [candidateProfile, setCandidateProfile] = useState(() => {
     const saved = localStorage.getItem('josaa_candidate_profile_2026');
     if (saved) {
       try { 
         const parsed = JSON.parse(saved);
-        if (parsed.jeeMainRank) return parsed;
+        if (parsed.jeeMainRank && Number(parsed.jeeMainRank) > 0) return parsed;
       } catch (e) {}
     }
     return INITIAL_PROFILE;
   });
+
+  // Local state for the quick rank input in the top header
+  const [quickRankInput, setQuickRankInput] = useState(String(candidateProfile.jeeMainRank || 38291));
+
+  useEffect(() => {
+    if (candidateProfile.jeeMainRank) {
+      setQuickRankInput(String(candidateProfile.jeeMainRank));
+      localStorage.setItem('josaa_candidate_profile_2026', JSON.stringify(candidateProfile));
+    }
+  }, [candidateProfile]);
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [isLockModalOpen, setIsLockModalOpen] = useState(false);
@@ -65,27 +83,13 @@ export default function App() {
   const [highlightedRowId, setHighlightedRowId] = useState(null);
   const [customChoices, setCustomChoices] = useState(null);
 
-  useEffect(() => {
-    if (hasGenerated && candidateProfile.jeeMainRank) {
-      localStorage.setItem('josaa_candidate_profile_2026', JSON.stringify(candidateProfile));
-      localStorage.setItem('josaa_has_generated_2026', 'true');
-    }
-  }, [candidateProfile, hasGenerated]);
-
   const generatedData = useMemo(() => {
-    if (!candidateProfile.jeeMainRank || Number(candidateProfile.jeeMainRank) <= 0) {
-      return {
-        smartWindowChoices: [],
-        fullRoundChoices: [],
-        mostLikelyChoices: [],
-        ambitiousCount: 0,
-        likelyCount: 0,
-        backupCount: 0,
-        totalEligibleCount: 0,
-        extendedCount: 0
-      };
-    }
-    return generateSmartChoiceList(ALL_JOSAA_PROGRAMS, candidateProfile);
+    const rank = Number(candidateProfile.jeeMainRank || 38291);
+    const validProfile = {
+      ...candidateProfile,
+      jeeMainRank: rank > 0 ? rank : 38291
+    };
+    return generateSmartChoiceList(ALL_JOSAA_PROGRAMS, validProfile);
   }, [candidateProfile]);
 
   const activeChoices = useMemo(() => {
@@ -197,7 +201,7 @@ export default function App() {
   };
 
   const scrollToFinder = () => {
-    const el = document.getElementById('candidate-wizard-section');
+    const el = document.getElementById('choice-sheet-section');
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
@@ -208,42 +212,63 @@ export default function App() {
   };
 
   const handleResetToBeginning = () => {
-    localStorage.removeItem('josaa_has_generated_2026');
-    localStorage.removeItem('josaa_candidate_profile_2026');
-    setHasGenerated(false);
     setCandidateProfile(INITIAL_PROFILE);
+    setQuickRankInput(String(INITIAL_PROFILE.jeeMainRank));
     setCustomChoices(null);
+    setIsRankPromptOpen(true);
     scrollToTop();
   };
 
-  const handleGenerateComplete = (profile) => {
-    setCandidateProfile(profile);
-    setHasGenerated(true);
+  const handleApplyQuickRank = () => {
+    const rankNum = Number(quickRankInput);
+    if (rankNum > 0) {
+      setCandidateProfile(prev => ({
+        ...prev,
+        jeeMainRank: rankNum
+      }));
+      setCustomChoices(null);
+    }
+  };
+
+  const handleUpdateQuickProfile = (partial) => {
+    setCandidateProfile(prev => ({
+      ...prev,
+      ...partial
+    }));
     setCustomChoices(null);
-    setTimeout(() => {
-      const el = document.getElementById('stats-summary-bar') || document.getElementById('choice-sheet-section');
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }, 150);
+  };
+
+  const handleSplashFinish = () => {
+    setShowSplash(false);
   };
 
   return (
-    <div className={`min-h-screen flex flex-col font-sans selection:bg-indigo-500/30 selection:text-indigo-200 ${
-      hasGenerated 
-        ? 'bg-[#eef2fe] text-slate-900' 
-        : 'bg-gradient-to-b from-[#0c1439] via-[#122252] to-[#0a122e] text-slate-100'
-    }`}>
+    <div className="min-h-screen flex flex-col font-sans selection:bg-indigo-500/30 selection:text-indigo-800 bg-[#eef2fe] text-slate-900">
       
       {/* ========================================================================= */}
-      {/* CASE A: WHEN CHOICES HAVE NOT BEEN GENERATED YET (LANDING & SETUP WIZARD) */}
+      {/* INTRO HERO SPLASH SCREEN (Shown for 1 to 3 seconds on load & refresh)      */}
       {/* ========================================================================= */}
-      {!hasGenerated && (
-        <>
+      {showSplash && (
+        <SplashScreen
+          onFinish={handleSplashFinish}
+          onOpenRules={() => {
+            setShowSplash(false);
+            setIsRulesModalOpen(true);
+          }}
+        />
+      )}
+
+      {/* ========================================================================= */}
+      {/* MAIN WEBSITE: WHITE & BLUE THEME MATCHING USER REFERENCE IMAGE            */}
+      {/* ========================================================================= */}
+      <div className="flex-1 flex flex-col animate-fade-in">
+        
+        {/* Top Section: Deep Royal Navy/Indigo Gradient Background (#0c1439 -> #25338d) */}
+        <div className="bg-gradient-to-r from-[#0c1439] via-[#16245f] to-[#25338d] text-white pb-8 shadow-md">
           <Navbar
             candidateProfile={candidateProfile}
             hasGenerated={hasGenerated}
-            onOpenWizard={() => setIsWizardOpen(true)}
+            onOpenWizard={() => setIsRankPromptOpen(true)}
             onOpenLockModal={() => setIsLockModalOpen(true)}
             onOpenRulesModal={() => setIsRulesModalOpen(true)}
             onOpenAbout={() => setIsAboutModalOpen(true)}
@@ -255,306 +280,286 @@ export default function App() {
             choicesCount={activeChoices.length}
           />
 
-          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
-            <HeroLanding
-              onStartFinder={scrollToFinder}
-              onOpenRules={() => setIsRulesModalOpen(true)}
-              onSelectCategory={scrollToFinder}
-            />
-
-            <div id="candidate-wizard-section" className="scroll-mt-24">
-              <OnboardingCard
-                candidateProfile={candidateProfile}
-                hasGenerated={hasGenerated}
-                onSaveProfile={(profile) => {
-                  setCandidateProfile(profile);
-                }}
-                onGenerate={handleGenerateComplete}
-                onReset={handleResetToBeginning}
-              />
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-5">
+            
+            {/* Title Block matching user mockup */}
+            <div className="space-y-1">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white tracking-tight">
+                Your {candidateProfile.counselingType === 'CSAB' ? 'CSAB Special' : 'JoSAA'} choice list
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-300">
+                {activeChoices.length} colleges ranked for CRL #{Number(candidateProfile.jeeMainRank || 38291).toLocaleString()} &bull; {candidateProfile.category} &bull; {candidateProfile.homeState || 'All India'}
+              </p>
             </div>
 
-            <div className="space-y-6 animate-fade-in pt-2">
-              <div className="text-center max-w-2xl mx-auto space-y-2 py-4">
-                <span className="text-xs font-bold uppercase tracking-wider text-indigo-400 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20">
-                  Official JoSAA 2026 Engine
-                </span>
-                <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                  JoSAA Counseling &amp; Choice Slicing Studio
-                </h2>
-                <p className="text-sm text-slate-300 leading-relaxed">
-                  Enter your exam ranks in the wizard above, or select a sample candidate preset to simulate the complete JoSAA counseling choice hierarchy and Round 5/6 allotment.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-5 rounded-2xl bg-white/5 border border-white/10 space-y-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
-                    <Sparkles className="w-5 h-5" />
-                  </div>
-                  <h3 className="text-sm font-bold text-white">
-                    Cumulative Slicing Strategy
-                  </h3>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Lists Choice #01 from the very beginning of the cutoff pool (dream choices) with zero penalty, leading down to your exact rank.
-                  </p>
-                </div>
-
-                <div className="p-5 rounded-2xl bg-white/5 border border-white/10 space-y-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center font-bold">
-                    <Target className="w-5 h-5" />
-                  </div>
-                  <h3 className="text-sm font-bold text-white">
-                    Most Likely Allotment Zone
-                  </h3>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Detects the 5 to 6 programs where closing cutoffs directly match your rank with the tightest margin for Round 5/6 allotment.
-                  </p>
-                </div>
-
-                <div className="p-5 rounded-2xl bg-white/5 border border-white/10 space-y-3">
-                  <div className="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold">
-                    <ShieldCheck className="w-5 h-5" />
-                  </div>
-                  <h3 className="text-sm font-bold text-white">
-                    +30 Safe Backup Cushion
-                  </h3>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Appends exactly 30 high-margin safety choices immediately after the likely zone, guaranteeing 99%+ admission security.
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-5 rounded-2xl bg-white/10 border border-white/15 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30 flex-shrink-0">
-                    <Compass className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-white">
-                      Complete Counseling Database (138 JoSAA Institutes &amp; 118 CSAB Institutes)
-                    </h4>
-                    <p className="text-xs text-slate-300">
-                      Evaluated strictly against official 2026 cutoff sheets from your uploaded data.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsRulesModalOpen(true)}
-                  className="px-4 py-2 rounded-xl bg-white/15 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors flex-shrink-0"
-                >
-                  <BookOpen className="w-3.5 h-3.5 text-indigo-300" />
-                  <span>Read Counseling Rules</span>
-                </button>
-              </div>
-            </div>
-          </main>
-        </>
-      )}
-
-      {/* ========================================================================= */}
-      {/* CASE B: WHEN CHOICES HAVE BEEN GENERATED (EXACT MATCH TO USER'S MOCKUP)   */}
-      {/* ========================================================================= */}
-      {hasGenerated && (
-        <div className="flex-1 flex flex-col animate-fade-in">
-          
-          {/* Top Section: Deep Royal Navy/Indigo Gradient Background (#0c1439 -> #25338d) */}
-          <div className="bg-gradient-to-r from-[#0c1439] via-[#16245f] to-[#25338d] text-white pb-8 shadow-md">
-            <Navbar
-              candidateProfile={candidateProfile}
-              hasGenerated={hasGenerated}
-              onOpenWizard={() => setIsWizardOpen(true)}
-              onOpenLockModal={() => setIsLockModalOpen(true)}
-              onOpenRulesModal={() => setIsRulesModalOpen(true)}
-              onOpenAbout={() => setIsAboutModalOpen(true)}
-              onOpenHowItWorks={() => setIsHowItWorksModalOpen(true)}
-              onOpenContact={() => setIsContactModalOpen(true)}
-              onScrollToTop={scrollToTop}
-              onStartFinder={scrollToFinder}
-              onResetToBeginning={handleResetToBeginning}
-              choicesCount={activeChoices.length}
-            />
-
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-5">
-              
-              {/* Title Block matching user mockup */}
-              <div className="space-y-1">
-                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white tracking-tight">
-                  Your {candidateProfile.counselingType === 'CSAB' ? 'CSAB Special' : 'JoSAA'} choice list
-                </h1>
-                <p className="text-xs sm:text-sm text-slate-300">
-                  {activeChoices.length} colleges ranked for CRL #{Number(candidateProfile.jeeMainRank || 38291).toLocaleString()} &bull; {candidateProfile.category} &bull; {candidateProfile.homeState || 'All India'}
-                </p>
-              </div>
-
-              {/* Home State & Portal Notice Banner */}
-              <div className="p-3 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-200">
-                <div className="flex items-center gap-2 flex-wrap">
+            {/* Quick Rank & Preferences Customizer Bar (Interactive at all times) */}
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 text-white shadow-xl space-y-3">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-white/10 pb-3">
+                <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="px-2 py-0.5 rounded-md bg-white/20 text-white font-mono font-bold border border-white/30">
-                    {candidateProfile.counselingType === 'CSAB' ? 'CSAB 2026 Special' : 'JoSAA 2026'}
+                  <span className="text-xs font-bold uppercase tracking-wider text-white">
+                    Quick Rank &amp; Quota Customizer
                   </span>
-                  <span>
-                    Candidate: <strong className="text-white font-mono">{candidateProfile.category}</strong> &bull; Domicile: <strong className="text-emerald-300">{candidateProfile.homeState || 'All India'}</strong>
-                  </span>
-                  <span className="text-white/40 hidden sm:inline">|</span>
-                  <span className="text-slate-300 hidden sm:inline">
-                    {candidateProfile.counselingType === 'CSAB'
-                      ? 'Official CSAB vacancy cutoffs • Excludes IITs'
-                      : `119 Institutes • 50% HS Quota Cutoff relaxation applied for NIT in ${candidateProfile.homeState || 'Home State'}`}
-                  </span>
-                  <span className="text-white/40 hidden md:inline">|</span>
-                  <span className="px-2 py-0.5 rounded-md bg-white/15 text-indigo-200 font-mono text-[11px] border border-white/20">
-                    Branches: {!candidateProfile.preferredBranches || candidateProfile.preferredBranches.includes('ALL') ? 'All Branches (12/12)' : `${candidateProfile.preferredBranches.join(', ')} (${candidateProfile.preferredBranches.length})`}
+                  <span className="text-[11px] text-slate-300 hidden sm:inline">
+                    &bull; Change your rank, category or authority to instantly recalculate all {activeChoices.length} choices
                   </span>
                 </div>
 
-                <div className="flex items-center gap-3 ml-auto sm:ml-0">
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={handleResetToBeginning}
-                    className="text-slate-300 hover:text-rose-300 flex items-center gap-1 transition-colors"
-                    title="Clear everything and start over"
+                    onClick={() => setIsRankPromptOpen(true)}
+                    className="px-3 py-1 rounded-lg bg-blue-500/30 hover:bg-blue-500/50 text-blue-200 border border-blue-400/30 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                   >
-                    <RotateCcw className="w-3 h-3 text-rose-400" />
-                    <span>Start Over</span>
+                    <Zap className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Rank Prompter</span>
                   </button>
+
                   <button
                     type="button"
                     onClick={() => setIsWizardOpen(true)}
-                    className="text-white hover:text-indigo-200 font-semibold flex items-center gap-1 transition-colors"
+                    className="px-3 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white border border-white/20 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                   >
-                    <span>Edit in Modal</span>
+                    <span>Full Wizard</span>
                     <span>↗</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResetToBeginning}
+                    className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                    title="Reset to default CSAB 38,291"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Reset</span>
                   </button>
                 </div>
               </div>
 
-              {/* 4 White Stats Cards sitting on the Gradient */}
-              <StatsBar
-                stats={summaryStats}
+              {/* Interactive Controls Strip */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 items-center">
+                
+                {/* 1. Authority Toggle */}
+                <div className="flex items-center bg-black/25 rounded-xl p-1 border border-white/15">
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateQuickProfile({ counselingType: 'CSAB' })}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      candidateProfile.counselingType === 'CSAB'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    CSAB (96)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateQuickProfile({ counselingType: 'JOSAA' })}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      candidateProfile.counselingType === 'JOSAA'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    JoSAA (119)
+                  </button>
+                </div>
+
+                {/* 2. CRL Rank Input */}
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-300">
+                    CRL #
+                  </span>
+                  <input
+                    type="number"
+                    value={quickRankInput}
+                    onChange={(e) => setQuickRankInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleApplyQuickRank();
+                    }}
+                    placeholder="Rank e.g. 38291"
+                    className="w-full pl-14 pr-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/20 focus:bg-white text-white focus:text-slate-900 border border-white/20 focus:border-blue-400 font-mono font-bold text-xs focus:outline-none transition-colors"
+                  />
+                </div>
+
+                {/* 3. Category Select */}
+                <div>
+                  <select
+                    value={candidateProfile.category}
+                    onChange={(e) => handleUpdateQuickProfile({ category: e.target.value })}
+                    className="w-full px-3 py-1.5 rounded-xl bg-[#131d45] text-white border border-white/20 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer"
+                  >
+                    {RESERVATION_CATEGORIES.map(c => (
+                      <option key={c.id} value={c.id} className="bg-[#0e173a] text-white">
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 4. Home State Select */}
+                <div>
+                  <select
+                    value={candidateProfile.homeState || 'Telangana'}
+                    onChange={(e) => handleUpdateQuickProfile({ homeState: e.target.value })}
+                    className="w-full px-3 py-1.5 rounded-xl bg-[#131d45] text-white border border-white/20 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer"
+                  >
+                    {INDIAN_STATES.map(st => (
+                      <option key={st} value={st} className="bg-[#0e173a] text-white">
+                        {st}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 5. Update Choices Button */}
+                <div>
+                  <button
+                    type="button"
+                    onClick={handleApplyQuickRank}
+                    className="w-full py-1.5 px-4 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold text-xs shadow-md shadow-blue-500/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Zap className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Update Choices</span>
+                  </button>
+                </div>
+
+              </div>
+            </div>
+
+            {/* 4 White Stats Cards sitting on the Gradient */}
+            <StatsBar
+              stats={summaryStats}
+              isSmartWindow={isSmartWindow}
+              setIsSmartWindow={setIsSmartWindow}
+              smartWindowCount={generatedData.smartWindowChoices?.length || summaryStats.totalChoices}
+              fullPoolCount={generatedData.fullRoundChoices?.length || generatedData.totalEligibleCount}
+              candidateProfile={candidateProfile}
+              onScrollToLikely={handleScrollToLikelyZone}
+            />
+
+          </div>
+        </div>
+
+        {/* Main Content Area: Clean Modern Canvas (#eef2fe) where White Cards Shine */}
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 pb-24 text-slate-800">
+          
+          {/* Side-by-Side Dashboard Layout (65% Left Choice Table / 35% Right Likely Sidebar) */}
+          <div id="choice-sheet-section" className="flex flex-col lg:flex-row items-start gap-6">
+            
+            {/* Left Column: Official JoSAA / CSAB Choice-Filling Sheet (65% width) */}
+            <div className="w-full lg:w-[65%] flex-shrink-0">
+              <ChoiceTable
+                choices={displayedChoices}
+                counselingType={candidateProfile.counselingType || 'CSAB'}
+                candidateProfile={candidateProfile}
+                onUpdateChoices={(updated) => setCustomChoices(updated)}
                 isSmartWindow={isSmartWindow}
                 setIsSmartWindow={setIsSmartWindow}
-                smartWindowCount={generatedData.smartWindowChoices?.length || summaryStats.totalChoices}
-                fullPoolCount={generatedData.fullRoundChoices?.length || generatedData.totalEligibleCount}
-                candidateProfile={candidateProfile}
-                onScrollToLikely={handleScrollToLikelyZone}
+                onToggleSmartWindow={() => setIsSmartWindow(!isSmartWindow)}
+                activeFilter={activeFilter}
+                setActiveFilter={setActiveFilter}
+                onFilterChange={setActiveFilter}
+                branchStream={branchStream}
+                setBranchStream={setBranchStream}
+                onStreamChange={setBranchStream}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                onSearchChange={setSearchQuery}
+                onMoveUp={handleMoveUp}
+                onMoveDown={handleMoveDown}
+                onRemove={handleRemove}
+                onResetOrder={handleResetOrder}
+                onClearAll={handleClearAllChoices}
+                onOpenLockModal={() => setIsLockModalOpen(true)}
+                highlightedRowId={highlightedRowId}
+                instituteCounts={{
+                  IIT: activeChoices.filter(c => c.instituteType === 'IIT').length,
+                  NIT: activeChoices.filter(c => c.instituteType === 'NIT').length,
+                  IIIT: activeChoices.filter(c => c.instituteType === 'IIIT').length,
+                  GFTI: activeChoices.filter(c => c.instituteType === 'GFTI').length
+                }}
+                totalEligibleCount={generatedData.totalEligibleCount}
               />
-
             </div>
+
+            {/* Right Column: Sticky Most Likely Colleges Sidebar (35% width) */}
+            <div className="w-full lg:w-[35%] lg:sticky lg:top-24">
+              <LikelySidebar
+                likelyChoices={generatedData.mostLikelyChoices}
+                candidateProfile={candidateProfile}
+                onLocateInTable={handleLocateRow}
+              />
+            </div>
+
           </div>
 
-          {/* Main Content Area: Clean Modern Canvas (#eef2fe) where White Cards Shine */}
-          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 pb-24 text-slate-800">
-            
-            {/* Side-by-Side Dashboard Layout (65% Left Choice Table / 35% Right Likely Sidebar) */}
-            <div id="choice-sheet-section" className="flex flex-col lg:flex-row items-start gap-6">
-              
-              {/* Left Column: Official JoSAA / CSAB Choice-Filling Sheet (65% width) */}
-              <div className="w-full lg:w-[65%] flex-shrink-0">
-                <ChoiceTable
-                  choices={displayedChoices}
-                  counselingType={candidateProfile.counselingType || 'JOSAA'}
-                  candidateProfile={candidateProfile}
-                  onUpdateChoices={(updated) => setCustomChoices(updated)}
-                  isSmartWindow={isSmartWindow}
-                  setIsSmartWindow={setIsSmartWindow}
-                  onToggleSmartWindow={() => setIsSmartWindow(!isSmartWindow)}
-                  activeFilter={activeFilter}
-                  setActiveFilter={setActiveFilter}
-                  onFilterChange={setActiveFilter}
-                  branchStream={branchStream}
-                  setBranchStream={setBranchStream}
-                  onStreamChange={setBranchStream}
-                  searchQuery={searchQuery}
-                  setSearchQuery={setSearchQuery}
-                  onSearchChange={setSearchQuery}
-                  onMoveUp={handleMoveUp}
-                  onMoveDown={handleMoveDown}
-                  onRemove={handleRemove}
-                  onResetOrder={handleResetOrder}
-                  onClearAll={handleClearAllChoices}
-                  onOpenLockModal={() => setIsLockModalOpen(true)}
-                  highlightedRowId={highlightedRowId}
-                  instituteCounts={{
-                    IIT: activeChoices.filter(c => c.instituteType === 'IIT').length,
-                    NIT: activeChoices.filter(c => c.instituteType === 'NIT').length,
-                    IIIT: activeChoices.filter(c => c.instituteType === 'IIIT').length,
-                    GFTI: activeChoices.filter(c => c.instituteType === 'GFTI').length
-                  }}
-                  totalEligibleCount={generatedData.totalEligibleCount}
-                />
-              </div>
+        </main>
 
-              {/* Right Column: Sticky Most Likely Colleges Sidebar (35% width) */}
-              <div className="w-full lg:w-[35%] lg:sticky lg:top-24">
-                <LikelySidebar
-                  likelyChoices={generatedData.mostLikelyChoices}
-                  candidateProfile={candidateProfile}
-                  onLocateInTable={handleLocateRow}
-                />
-              </div>
-
+        {/* Bottom Floating Comparison / Lock Bar matching user mockup */}
+        <div className="fixed bottom-0 left-0 right-0 z-30 bg-[#0c1633]/95 backdrop-blur-md border-t border-slate-800 text-white py-3.5 px-4 sm:px-8 shadow-2xl">
+          <div className="max-w-7xl mx-auto flex items-center justify-between text-xs sm:text-sm">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span className="font-medium text-slate-300">
+                <strong className="text-white font-bold">{Math.min(activeChoices.length, 321)} colleges</strong> ranked for your verified CRL
+              </span>
             </div>
-
-          </main>
-
-          {/* Bottom Floating Comparison / Lock Bar matching user mockup */}
-          <div className="fixed bottom-0 left-0 right-0 z-30 bg-[#0c1633]/95 backdrop-blur-md border-t border-slate-800 text-white py-3.5 px-4 sm:px-8 shadow-2xl">
-            <div className="max-w-7xl mx-auto flex items-center justify-between text-xs sm:text-sm">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                <span className="font-medium text-slate-300">
-                  <strong className="text-white font-bold">{Math.min(activeChoices.length, 321)} colleges</strong> ranked for your verified CRL
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsLockModalOpen(true)}
-                className="font-bold text-white hover:text-indigo-300 flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <span>Compare side by side &amp; Lock choices &rarr;</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setIsLockModalOpen(true)}
+              className="font-bold text-white hover:text-indigo-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <span>Compare side by side &amp; Lock choices &rarr;</span>
+            </button>
           </div>
-
         </div>
-      )}
 
-      {/* Footer */}
-      <footer className="mt-auto border-t border-slate-800/80 bg-[#040714] py-6 text-xs text-slate-500">
+      </div>
+
+      {/* Footer in White and Blue theme */}
+      <footer className="mt-auto border-t border-slate-200 bg-white py-6 text-xs text-slate-600 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <Compass className="w-4 h-4 text-blue-500" />
-            <span className="font-semibold text-slate-400">JEE College Finder &bull; JoSAA SeatMatrix 2026 Studio</span>
+            <Compass className="w-4 h-4 text-blue-600" />
+            <span className="font-semibold text-slate-800">JEE College Finder &bull; JoSAA SeatMatrix 2026 Studio</span>
             <span>&bull;</span>
             <span>All 119 Institutes (23 IITs, 32 NITs, 26 IIITs, 38 GFTIs)</span>
           </div>
-          <div className="flex items-center gap-4 text-slate-400">
-            <button type="button" onClick={() => setIsRulesModalOpen(true)} className="hover:text-blue-400 transition-colors">
+          <div className="flex items-center gap-4 text-slate-600">
+            <button type="button" onClick={() => setIsRulesModalOpen(true)} className="hover:text-blue-600 transition-colors cursor-pointer">
               Counseling Guidelines
             </button>
-            <button type="button" onClick={handleResetToBeginning} className="hover:text-blue-400 transition-colors">
+            <button type="button" onClick={handleResetToBeginning} className="hover:text-blue-600 transition-colors cursor-pointer">
               Reset to Beginning
             </button>
-            {hasGenerated && (
-              <button type="button" onClick={() => setIsLockModalOpen(true)} className="hover:text-blue-400 transition-colors">
-                Choice Locking
-              </button>
-            )}
+            <button type="button" onClick={() => setIsLockModalOpen(true)} className="hover:text-blue-600 transition-colors cursor-pointer">
+              Choice Locking
+            </button>
           </div>
         </div>
       </footer>
 
-      {/* Modals */}
+      {/* Rank Prompt Dialog: Asks for details on initial load / refresh once splash ends */}
+      <RankPromptModal
+        isOpen={isRankPromptOpen && !showSplash}
+        onClose={() => setIsRankPromptOpen(false)}
+        currentProfile={candidateProfile}
+        onSaveProfile={(profile) => {
+          setCandidateProfile(profile);
+          setQuickRankInput(String(profile.jeeMainRank || 38291));
+          setCustomChoices(null);
+        }}
+      />
+
+      {/* Full 4-Step Setup Wizard */}
       <OnboardingWizard
         isOpen={isWizardOpen}
         onClose={() => setIsWizardOpen(false)}
         currentProfile={candidateProfile}
         onSaveProfile={(profile) => {
           setCandidateProfile(profile);
-          setHasGenerated(true);
+          setQuickRankInput(String(profile.jeeMainRank || 38291));
           setCustomChoices(null);
         }}
       />

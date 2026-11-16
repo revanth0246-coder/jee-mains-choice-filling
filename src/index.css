@@ -89,3 +89,12 @@
 .glow-emerald {
   box-shadow: 0 0 25px -4px rgba(16, 185, 129, 0.3);
 }
+
+@keyframes splashProgress {
+  0% { width: 0%; }
+  100% { width: 100%; }
+}
+
+.animate-splash-bar {
+  animation: splashProgress 2.2s linear forwards;
+}
