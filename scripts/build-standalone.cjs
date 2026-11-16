@@ -54,10 +54,14 @@ try {
   const bundledJs = result.outputFiles[0].text;
   console.log(`Bundled JS size: ${(bundledJs.length / 1024).toFixed(1)} KB`);
 
-  // Ensure hero-banner is in dist
+  // Ensure public assets (hero-banner, Google verification file) are in dist
   const heroSrc = path.join(__dirname, '../public/hero-banner.jpg');
   if (fs.existsSync(heroSrc)) {
     fs.copyFileSync(heroSrc, path.join(distDir, 'hero-banner.jpg'));
+  }
+  const googleVerifySrc = path.join(__dirname, '../public/googled8ac5e4950d2eb8a.html');
+  if (fs.existsSync(googleVerifySrc)) {
+    fs.copyFileSync(googleVerifySrc, path.join(distDir, 'googled8ac5e4950d2eb8a.html'));
   }
 
   // Create standalone HTML in index.html and dist/index.html
